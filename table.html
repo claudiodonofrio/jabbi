@@ -1,0 +1,504 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<title>JabRef references</title>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<script type="text/javascript">
+<!--
+// QuickSearch script for JabRef HTML export (no Abstract/BibTeX)
+// Version: 3.0
+//
+// Copyright (c) 2006-2011, Mark Schenk
+//
+// This software is distributed under a Creative Commons Attribution 3.0 License
+// http://creativecommons.org/licenses/by/3.0/
+//
+// Features:
+// - intuitive find-as-you-type searching
+//    ~ case insensitive
+//    ~ ignore diacritics (optional)
+//
+// - search with/without Regular Expressions
+// - match BibTeX key
+//
+
+// Search settings
+var noSquiggles = true; 	// ignore diacritics when searching
+var searchRegExp = false; 	// enable RegExp searches
+
+
+if (window.addEventListener) {
+	window.addEventListener("load",initSearch,false); }
+else if (window.attachEvent) {
+	window.attachEvent("onload", initSearch); }
+
+function initSearch() {
+	// check for quick search table and searchfield
+	if (!document.getElementById('qs_table')||!document.getElementById('quicksearch')) { return; }
+
+	// load all the rows and sort into arrays
+	loadTableData();
+	
+	//find the query field
+	qsfield = document.getElementById('qs_field');
+
+	// previous search term; used for speed optimisation
+	prevSearch = '';
+
+	//find statistics location
+	stats = document.getElementById('stat');
+	setStatistics(-1);
+	
+	// set up preferences
+	initPreferences();
+
+	// shows the searchfield
+	document.getElementById('quicksearch').style.display = 'block';
+	document.getElementById('qs_field').onkeyup = quickSearch;
+}
+
+function loadTableData() {
+	// find table and appropriate rows
+	searchTable = document.getElementById('qs_table');
+	var allRows = searchTable.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+
+	// split all rows into entryRows and infoRows (e.g. abstract, comment, bibtex)
+	entryRows = new Array();
+
+	// get data from each row
+	entryRowsData = new Array();
+	
+	BibTeXKeys = new Array();
+	
+	for (var i=0, k=0, j=0; i<allRows.length;i++) {
+		if (allRows[i].className.match(/entry/)) {
+			entryRows[j] = allRows[i];
+			entryRowsData[j] = stripDiacritics(getTextContent(allRows[i]));
+			allRows[i].id ? BibTeXKeys[j] = allRows[i].id : allRows[i].id = 'autokey_'+j;
+			j ++;
+		}
+	}
+	//number of entries and rows
+	numEntries = entryRows.length;
+}
+
+function quickSearch(){
+	
+	tInput = qsfield;
+
+	if (tInput.value.length == 0) {
+		showAll();
+		setStatistics(-1);
+		qsfield.className = '';
+		return;
+	} else {
+		t = stripDiacritics(tInput.value);
+
+		if(!searchRegExp) { t = escapeRegExp(t); }
+			
+		// only search for valid RegExp
+		try {
+			textRegExp = new RegExp(t,"i");
+			qsfield.className = '';
+		}
+			catch(err) {
+			prevSearch = tInput.value;
+			qsfield.className = 'invalidsearch';
+			return;
+		}
+	}
+	
+	// count number of hits
+	var hits = 0;
+
+	// start looping through all entry rows
+	for (var i = 0; cRow = entryRows[i]; i++){
+
+		// only show search the cells if it isn't already hidden OR if the search term is getting shorter, then search all
+		if(cRow.className.indexOf('noshow')==-1 || tInput.value.length <= prevSearch.length){
+			var found = false; 
+
+			if (entryRowsData[i].search(textRegExp) != -1 || BibTeXKeys[i].search(textRegExp) != -1){ 
+				found = true;
+			}
+			
+			if (found){
+				cRow.className = 'entry show';
+				hits++;
+			} else {
+				cRow.className = 'entry noshow';
+			}
+		}
+	}
+
+	// update statistics
+	setStatistics(hits)
+	
+	// set previous search value
+	prevSearch = tInput.value;
+}
+
+
+// Strip Diacritics from text
+// http://stackoverflow.com/questions/990904/javascript-remove-accents-in-strings
+
+// String containing replacement characters for stripping accents 
+var stripstring = 
+    'AAAAAAACEEEEIIII'+
+    'DNOOOOO.OUUUUY..'+
+    'aaaaaaaceeeeiiii'+
+    'dnooooo.ouuuuy.y'+
+    'AaAaAaCcCcCcCcDd'+
+    'DdEeEeEeEeEeGgGg'+
+    'GgGgHhHhIiIiIiIi'+
+    'IiIiJjKkkLlLlLlL'+
+    'lJlNnNnNnnNnOoOo'+
+    'OoOoRrRrRrSsSsSs'+
+    'SsTtTtTtUuUuUuUu'+
+    'UuUuWwYyYZzZzZz.';
+
+function stripDiacritics(str){
+
+    if(noSquiggles==false){
+        return str;
+    }
+
+    var answer='';
+    for(var i=0;i<str.length;i++){
+        var ch=str[i];
+        var chindex=ch.charCodeAt(0)-192;   // Index of character code in the strip string
+        if(chindex>=0 && chindex<stripstring.length){
+            // Character is within our table, so we can strip the accent...
+            var outch=stripstring.charAt(chindex);
+            // ...unless it was shown as a '.'
+            if(outch!='.')ch=outch;
+        }
+        answer+=ch;
+    }
+    return answer;
+}
+
+// http://stackoverflow.com/questions/3446170/escape-string-for-use-in-javascript-regex
+// NOTE: must escape every \ in the export code because of the JabRef Export...
+function escapeRegExp(str) {
+  return str.replace(/[-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&");
+}
+
+function setStatistics (hits) {
+	if(hits < 0) { hits=numEntries; }
+	if(stats) { stats.firstChild.data = hits + '/' + numEntries}
+}
+
+function getTextContent(node) {
+	// Function written by Arve Bersvendsen
+	// http://www.virtuelvis.com
+	
+	if (node.nodeType == 3) {
+	return node.nodeValue;
+	} // text node
+	if (node.nodeType == 1 && node.className != "infolinks") { // element node
+	var text = [];
+	for (var chld = node.firstChild;chld;chld=chld.nextSibling) {
+		text.push(getTextContent(chld));
+	}
+	return text.join("");
+	} return ""; // some other node, won't contain text nodes.
+}
+
+function showAll(){
+	for (var i = 0; i < numEntries; i++){ entryRows[i].className = 'entry show'; }
+}
+
+function clearQS() {
+	qsfield.value = '';
+	showAll();
+}
+
+function redoQS(){
+	showAll();
+	quickSearch(qsfield);
+}
+
+function updateSetting(obj){
+	var option = obj.id;
+	var checked = obj.value;
+
+	switch(option)
+	 {
+	 case "opt_useRegExp":
+	   searchRegExp=!searchRegExp;
+	   redoQS();
+	   break;
+	 case "opt_noAccents":
+	   noSquiggles=!noSquiggles;
+	   loadTableData();
+	   redoQS();
+	   break;
+	 }
+}
+
+function initPreferences(){
+	if(noSquiggles){document.getElementById("opt_noAccents").checked = true;}
+	if(searchRegExp){document.getElementById("opt_useRegExp").checked = true;}
+}
+
+function toggleSettings(){
+	var togglebutton = document.getElementById('showsettings');
+	var settings = document.getElementById('settings');
+	
+	if(settings.className == "hidden"){
+		settings.className = "show";
+		togglebutton.innerText = "close settings";
+		togglebutton.textContent = "close settings";
+	}else{
+		settings.className = "hidden";
+		togglebutton.innerText = "settings...";		
+		togglebutton.textContent = "settings...";
+	}
+}
+
+-->
+</script>
+<style type="text/css">
+body { background-color: white; font-family: Arial, sans-serif; font-size: 13px; line-height: 1.2; padding: 1em; color: #2E2E2E; margin: auto 2em; }
+
+form#quicksearch { width: auto; border-style: solid; border-color: gray; border-width: 1px 0px; padding: 0.7em 0.5em; display:none; position:relative; }
+span#searchstat {padding-left: 1em;}
+
+div#settings { margin-top:0.7em; /* border-bottom: 1px transparent solid; background-color: #efefef; border: 1px grey solid; */ }
+div#settings ul {margin: 0; padding: 0; }
+div#settings li {margin: 0; padding: 0 1em 0 0; display: inline; list-style: none; }
+div#settings li + li { border-left: 2px #efefef solid; padding-left: 0.5em;}
+div#settings input { margin-bottom: 0px;}
+
+div#settings.hidden {display:none;}
+
+#showsettings { border: 1px grey solid; padding: 0 0.5em; float:right; line-height: 1.6em; text-align: right; }
+#showsettings:hover { cursor: pointer; }
+
+.invalidsearch { background-color: red; }
+input[type="button"] { background-color: #efefef; border: 1px #2E2E2E solid;}
+
+table { width: 100%; empty-cells: show; border-spacing: 0em 0.2em; margin: 1em 0em; border-style: none; }
+th, td { border: 1px gray solid; border-width: 1px 1px; padding: 0.5em; vertical-align: top; text-align: left; }
+th { background-color: #efefef; }
+td + td, th + th { border-left: none; }
+
+td a { color: navy; text-decoration: none; }
+td a:hover  { text-decoration: underline; }
+
+tr.noshow { display: none;}
+tr.highlight td { background-color: #EFEFEF; border-top: 2px #2E2E2E solid; font-weight: bold; }
+tr.abstract td, tr.comment td, tr.bibtex td { background-color: #EFEFEF; text-align: justify; border-bottom: 2px #2E2E2E solid; }
+tr.nextshow td { border-bottom: 1px gray solid; }
+
+tr.bibtex pre { width: 100%; overflow: auto; white-space: pre-wrap;}
+p.infolinks { margin: 0.3em 0em 0em 0em; padding: 0px; }
+
+@media print {
+	p.infolinks, #qs_settings, #quicksearch, t.bibtex { display: none !important; }
+	tr { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<form action="" id="quicksearch">
+<input type="text" id="qs_field" autocomplete="off" placeholder="Type to search..." /> <input type="button" onclick="clearQS()" value="clear" />
+<span id="searchstat">Matching entries: <span id="stat">0</span></span>
+<div id="showsettings" onclick="toggleSettings()">settings...</div>
+<div id="settings" class="hidden">
+<ul>
+<li><input type="checkbox" class="search_setting" id="opt_useRegExp" onchange="updateSetting(this)"><label for="opt_useRegExp"> use RegExp</label></li>
+<li><input type="checkbox" class="search_setting" id="opt_noAccents" onchange="updateSetting(this)"><label for="opt_noAccents"> ignore accents</label></li>
+</ul>
+</div>
+</form>
+<table id="qs_table" border="1">
+<thead><tr><th width="20%">Author</th><th width="30%">Title</th><th width="5%">Year</th><th width="30%">Journal/Proceedings</th><th width="10%">Reftype</th><th width="5%">DOI/URL</th></tr></thead>
+<tbody><tr id="Lian2023" class="entry">
+	<td>Lian, J., Lauvaux, T., Utard, H., Br&eacute;on, F.-M., Broquet, G., Ramonet, M., Laurent, O., Albarus, I., Chariot, M., Kotthaus, S., Haeffelin, M., Sanchez, O., Perrussel, O., van der Gon, H.A.D., Dellaert, S.N.C. and Ciais, P.</td>
+	<td>Can we use atmospheric COlesssubgreater2less/subgreater measurements to verify emission trends reported by cities? Lessons from a 6-year atmospheric inversion over Paris</td>
+	<td>2023</td>
+	<td>Atmospheric Chemistry and Physics<br/>Vol. 23(15), pp. 8823-8835&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.5194/acp-23-8823-2023">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Albarus2023" class="entry">
+	<td>Albarus, I., Fleischmann, G., Aigner, P., Ciais, P., van der Gon, H.D., Droge, R., Lian, J., Rincon, M.A.N., Utard, H. and Lauvaux, T.</td>
+	<td>From political pledges to quantitative mapping of climate mitigation plans: Comparison of two European cities</td>
+	<td>2023</td>
+	<td>Carbon Balance and Management<br/>Vol. 18(1)&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1186/s13021-023-00236-y">DOI</a> &nbsp;</td>
+</tr>
+<tr id="dolan2023" class="entry">
+	<td>Dolan, J.</td>
+	<td>Complex interactions on the path to net zero: Multi-level climate governance in Munich and Zurich.</td>
+	<td>2023</td>
+	<td><i>School</i>: School of Governance of the Bavarian School of PublicPolicy, Technical University of Munich&nbsp;</td>
+	<td>mastersthesis</td>
+	<td><a href="https://fileshare.icos-cp.eu/s/Tf9MYmoe6NnY8gH">URL</a>&nbsp;</td>
+</tr>
+<tr id="Storm2023" class="entry">
+	<td>Storm, I., Karstens, U., D&#39;Onofrio, C., Vermeulen, A. and Peters, W.</td>
+	<td>A view of the European carbon flux landscape through the lens of the ICOS atmospheric observation network</td>
+	<td>2023</td>
+	<td>Atmospheric Chemistry and Physics<br/>Vol. 23(9), pp. 4993-5008&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.5194/acp-23-4993-2023">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Fung2023" class="entry">
+	<td>Fung, P.L., Al-Jaghbeer, O., Pirjola, L., Aaltonen, H. and Jarvi, L.</td>
+	<td>Exploring the discrepancy between top-down and bottom-up approaches of fine spatio-temporal vehicular CO2 emission in an urban road network</td>
+	<td>2023</td>
+	<td>SCIENCE OF THE TOTAL ENVIRONMENT<br/>Vol. 901&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.scitotenv.2023.165827">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Stroemberg2023" class="entry">
+	<td>Str&ouml;mberg, J., Li, X., Kurppa, M., Kuuluvainen, H., Pirjola, L. and J&auml;rvi, L.</td>
+	<td>Effect of radiation interaction and aerosol processes on ventilation and aerosol concentrations in a real urban neighbourhood in Helsinki</td>
+	<td>2023</td>
+	<td>Atmospheric Chemistry and Physics<br/>Vol. 23(16), pp. 9347-9364&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.5194/acp-23-9347-2023">DOI</a> <a href="https://acp.copernicus.org/articles/23/9347/2023/">URL</a>&nbsp;</td>
+</tr>
+<tr id="Ahongshangbam2023" class="entry">
+	<td>Ahongshangbam, J., Kulmala, L., Soininen, J., Fr&uuml;hauf, Y., Karvinen, E., Salmon, Y., Lintunen, A., Karvonen, A. and J&auml;rvi, L.</td>
+	<td>Sap flow and leaf gas exchange response to a drought and heatwave in urban green spaces in a Nordic city</td>
+	<td>2023</td>
+	<td>Biogeosciences<br/>Vol. 20(21), pp. 4455-4475&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.5194/bg-20-4455-2023">DOI</a> <a href="https://bg.copernicus.org/articles/20/4455/2023/">URL</a>&nbsp;</td>
+</tr>
+<tr id="Zhao2023" class="entry">
+	<td>Zhao, X., Chen, J., Marshall, J., Ga&lstrok;kowski​​​​​​​, M., Hachinger, S., Dietrich, F., Shekhar, A., Gensheimer, J., Wenzel, A. and Gerbig, C.</td>
+	<td>Understanding greenhouse gas (GHG) column concentrations in Munich using the Weather Research and Forecasting (WRF) model</td>
+	<td>2023</td>
+	<td>Atmospheric Chemistry and Physics<br/>Vol. 23(22), pp. 14325-14347&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.5194/acp-23-14325-2023">DOI</a> <a href="https://acp.copernicus.org/articles/23/14325/2023/">URL</a>&nbsp;</td>
+</tr>
+<tr id="Lan2024" class="entry">
+	<td>Lan, C., Mauder, M., Stagakis, S., Loubet, B., D’Onofrio, C., Metzger, S., Durden, D. and Herig-Coimbra, P.-H.</td>
+	<td>Intercomparison of eddy-covariance software for urban tall-tower sites</td>
+	<td>2024</td>
+	<td>Atmospheric Measurement Techniques<br/>Vol. 17(9), pp. 2649-2669&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.5194/amt-17-2649-2024">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Havu2024" class="entry">
+	<td>Havu, M., Kulmala, L., Lee, H.S., Saranko, O., Soininen, J., Ahongshangbam, J. and Järvi, L.</td>
+	<td>CO2 uptake of urban vegetation in a warming Nordic city</td>
+	<td>2024</td>
+	<td>Urban Forestry &amp; Urban Greening<br/>Vol. 94, pp. 128261&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.ufug.2024.128261">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Lian2024" class="entry">
+	<td>Lian, J., Laurent, O., Chariot, M., Lienhardt, L., Ramonet, M., Utard, H., Lauvaux, T., Bréon, F.-M., Broquet, G., Cucchi, K., Millair, L. and Ciais, P.</td>
+	<td>Development and deployment of a mid-cost CO2 sensor monitoring network to support atmospheric inverse modeling for quantifying urban CO2 emissions in Paris</td>
+	<td>2024</td>
+	<td>Atmospheric Measurement Techniques<br/>Vol. 17(19), pp. 5821-5839&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.5194/amt-17-5821-2024">DOI</a> &nbsp;</td>
+</tr>
+<tr id="AlJaghbeer2024" class="entry">
+	<td>Al-Jaghbeer, O., Fung, P.L., Paunu, V.-V. and Järvi, L.</td>
+	<td>Mapping CO2 traffic emissions within local climate zones in Helsinki</td>
+	<td>2024</td>
+	<td>Urban Climate<br/>Vol. 58, pp. 102171&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.uclim.2024.102171">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Leppaenen2024" class="entry">
+	<td>Leppänen, P.-K., Kinnunen, A., Hautamäki, R., Järvi, L., Havu, M., Junnila, S. and Tahvonen, O.</td>
+	<td>Impact of changing urban typologies on residential vegetation and its climate-effects – A case study from Helsinki, Finland</td>
+	<td>2024</td>
+	<td>Urban Forestry &amp; Urban Greening<br/>Vol. 96, pp. 128343&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1016/j.ufug.2024.128343">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Fung2024" class="entry">
+	<td>Fung, P.L., Al-Jaghbeer, O., Chen, J., Paunu, V.-V., Vosough, S., Roncoli, C. and Järvi, L.</td>
+	<td>A geospatial approach for dynamic on-road emission through open-access floating car data</td>
+	<td>2024</td>
+	<td>Environmental Research Letters<br/>Vol. 20(1), pp. 014033&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1088/1748-9326/ad984d">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Jasek‐Kaminska2024" class="entry">
+	<td>Jasek‐Kamińska, A., Szostak, R., Chmura, Ł., Bartyzel, J. and Zimnoch, M.</td>
+	<td>Carbon dioxide and evapotranspiration fluxes in an urban area of Krakow, Poland</td>
+	<td>2024</td>
+	<td>Quarterly Journal of the Royal Meteorological Society<br/>Vol. 150(765), pp. 5498-5517&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1002/qj.4884">DOI</a> &nbsp;</td>
+</tr>
+<tr id="HerigCoimbra2024" class="entry">
+	<td>Herig Coimbra, P.H., Loubet, B., Laurent, O., Bignotti, L., Lozano, M. and Ramonet, M.</td>
+	<td>Eddy covariance with slow-response greenhouse gas analysers on tall towers: bridging atmospheric and ecosystem greenhouse gas networks</td>
+	<td>2024</td>
+	<td>Atmospheric Measurement Techniques<br/>Vol. 17(22), pp. 6625-6645&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.5194/amt-17-6625-2024">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Karvinen2024" class="entry">
+	<td>Karvinen, E., Backman, L., Järvi, L. and Kulmala, L.</td>
+	<td>Soil respiration across a variety of tree-covered urban green spaces in Helsinki, Finland</td>
+	<td>2024</td>
+	<td>SOIL<br/>Vol. 10(1), pp. 381-406&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.5194/soil-10-381-2024">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Boehm2025" class="entry">
+	<td>Böhm, F., Makowski, M., Aigner, P. and Chen, J.</td>
+	<td>Tenta: Remote and Real-Time Sensor Network Management</td>
+	<td>2025</td>
+	<td>Journal of Open Source Software<br/>Vol. 10(105), pp. 7311&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.21105/joss.07311">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Lan2025" class="entry">
+	<td>Lan, C., Holst, C.C., Grünwald, T. and Mauder, M.</td>
+	<td>Linkage Between Vertical Coupling and Storage Flux: Insights from Urban Tall-Tower Eddy Covariance Measurement</td>
+	<td>2025</td>
+	<td>Boundary-Layer Meteorology<br/>Vol. 191(1)&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1007/s10546-024-00894-6">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Rocha2024" class="entry">
+	<td>Rocha, A.D., Vulova, S., Förster, M., Gioli, B., Matthews, B., Helfter, C., Meier, F., Steeneveld, G.-J., Barlow, J.F., Järvi, L., Chrysoulakis, N., Nicolini, G. and Kleinschmit, B.</td>
+	<td>Unprivileged groups are less served by green cooling services in major European urban areas</td>
+	<td>2024</td>
+	<td>Nature Cities<br/>Vol. 1(6), pp. 424-435&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1038/s44284-024-00077-x">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Vitale2024" class="entry">
+	<td>Vitale, D., Fratini, G., Helfter, C., Hortnagl, L., Kohonen, K.-M., Mammarella, I., Nemitz, E., Nicolini, G., Rebmann, C., Sabbatini, S. and Papale, D.</td>
+	<td>A pre-whitening with block-bootstrap cross-correlation procedure for temporal alignment of data sampled by eddy covariance systems</td>
+	<td>2024</td>
+	<td>Environmental and Ecological Statistics<br/>Vol. 31(2), pp. 219-244&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.1007/s10651-024-00615-9">DOI</a> &nbsp;</td>
+</tr>
+<tr id="Sha2025" class="entry">
+	<td>Sha, M.K., Das, S., Frey, M.M., Dubravica, D., Alberti, C., Baier, B.C., Balis, D., Bezanilla, A., Blumenstock, T., Boesch, H., Cai, Z., Chen, J., Dandocsi, A., Mazière, M.D., Foka, S., García, O., Gillespie, L.D., Gribanov, K., Gross, J., Grutter, M., Handley, P., Hase, F., Heikkinen, P., Humpage, N., Jacobs, N., Jeong, S., Karppinen, T., Kiel, M., Kivi, R., Langerock, B., Laughner, J., Lopez, M., Makarova, M., Mermigkas, M., Morino, I., Mostafavipak, N., Nemuc, A., Newberger, T., Ohyama, H., Okello, W., Osterman, G., Park, H., Pirloaga, R., Pollard, D.F., Raffalski, U., Ramonet, M., Sepúlveda, E., Simpson, W.R., Stremme, W., Sweeney, C., Taquet, N., Topaloglou, C., Tu, Q., Warneke, T., Wunch, D., Zakharov, V. and Zhou, M.</td>
+	<td>Fiducial Reference Measurements for Greenhouse Gases (FRM4GHG): Validation of Satellite (Sentinel-5 Precursor, OCO-2, and GOSAT) Missions Using the COllaborative Carbon Column Observing Network (COCCON)</td>
+	<td>2025</td>
+	<td>Remote Sensing<br/>Vol. 17(5), pp. 734&nbsp;</td>
+	<td>article</td>
+	<td><a href="https://doi.org/10.3390/rs17050734">DOI</a> &nbsp;</td>
+</tr>
+</tbody>
+</table>
+<footer>
+ <small>Created by <a href="https://www.jabref.org">JabRef</a> on 2025/02/28.</small>
+</footer>
+
+<!-- file generated by JabRef -->
+
+</body>
+</html>
